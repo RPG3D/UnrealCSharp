@@ -305,7 +305,7 @@ void FCSharpCompilerRunnable::Compile()
 			return;
 		}
 
-		if (NotificationItem.IsValid())
+		if (NotificationItem.IsValid() && FSlateApplication::IsInitialized())
 		{
 			NotificationItem->Fadeout();
 
