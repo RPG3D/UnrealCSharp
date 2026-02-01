@@ -45,6 +45,33 @@ bool FMonoDomain::bLoadSucceed;
 extern void* mono_aot_module_System_Private_CoreLib_info;
 #endif
 
+#if PLATFORM_WINDOWS
+// check here
+// https://www.cnblogs.com/bodong/p/17962564
+static void EnableVisualStudioToolsForUnitySupport()
+{
+	IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
+
+	const FString ProcessPath = FPlatformProcess::ExecutableName();
+	const FString ProcessDirectory = FPaths::GetPath(ProcessPath);
+
+	const FString ProcessName = FPaths::GetBaseFilename(ProcessPath);
+	const FString DataDirectoryPath = ProcessDirectory / (ProcessName + TEXT("_Data"));
+	if (!PlatformFile.DirectoryExists(*DataDirectoryPath))
+	{
+		PlatformFile.CreateDirectory(*DataDirectoryPath);
+	}
+
+	const FString DllFilePath = ProcessDirectory / TEXT("UnityPlayer.dll");
+
+	if (!PlatformFile.FileExists(*DllFilePath))
+	{
+		FFileHelper::SaveStringToFile(TEXT(""), *DllFilePath);
+	}
+}
+#endif
+
+
 void FMonoDomain::Initialize(const FMonoDomainInitializeParams& InParams)
 {
 	RegisterMonoTrace();
@@ -97,17 +124,30 @@ void FMonoDomain::Initialize(const FMonoDomainInitializeParams& InParams)
 		{
 			if (UnrealCSharpSetting->IsEnableDebug())
 			{
-				const auto Config = FString::Printf(TEXT(
-					"--debugger-agent=transport=dt_socket,server=y,suspend=n,address=%s:%d"
-				),
-				                                    *UnrealCSharpSetting->GetHost(),
-				                                    UnrealCSharpSetting->GetPort()
+				int32 DebuggerPort = UnrealCSharpSetting->GetPort();
+				
+				bool bUseUnity3DDebugTool = false;
+				//Unity Mono Debugger, https://www.cnblogs.com/bodong/p/17962564
+				
+#if PLATFORM_WINDOWS
+				bUseUnity3DDebugTool = true;
+				if (bUseUnity3DDebugTool)
+				{
+					// allow you debug mono C# code with Visual Studio Tools for unity
+					EnableVisualStudioToolsForUnitySupport();
+					DebuggerPort = 56000 + FPlatformProcess::GetCurrentProcessId() % 1000;
+				}
+#endif
+				const auto Config = FString::Printf(TEXT("--debugger-agent=transport=dt_socket,server=y,suspend=n,address=%s:%d"),
+					*UnrealCSharpSetting->GetHost(),DebuggerPort	                                    
 				);
 
 				char* Options[] = {
 					TCHAR_TO_ANSI(TEXT("--soft-breakpoints")),
 					TCHAR_TO_ANSI(*Config)
 				};
+
+				UE_LOG(LogTemp, Display, TEXT("Debug Info: %s"), *Config);
 
 				mono_jit_parse_options(sizeof(Options) / sizeof(char*), Options);
 			}
